@@ -1,0 +1,40 @@
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Build artifacts
+build/
+bin/
+lib/
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.exe
+*.ilk
+*.pdb
+
+# IDE specific files
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Other
+*.swp
+*.swo 
