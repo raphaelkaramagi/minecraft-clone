@@ -11,25 +11,88 @@
 #include "Camera.h" // Include Camera header
 #include "World.h" // Include World header
 
+// Make World and Renderer instances global for access in callbacks for now
+// This is not ideal for large projects but simplifies this step.
+Renderer g_renderer;
+World g_world;
+
 // Globals for window size (for framebuffer_size_callback)
 int g_windowWidth = 800;
 int g_windowHeight = 600;
-Camera g_camera(glm::vec3(0.0f, Chunk::CHUNK_HEIGHT + 5.0f, 30.0f)); // Position camera above origin looking at chunks
+// Initial position should allow viewing of the initial chunks at (0,0,0), (16,0,0), (0,0,16), (16,0,16)
+// Let's place it at x=16, y high enough, z far enough to see them.
+Camera g_camera(glm::vec3(static_cast<float>(Chunk::CHUNK_WIDTH), 
+                           static_cast<float>(Chunk::CHUNK_HEIGHT / 2 + 10), 
+                           static_cast<float>(Chunk::CHUNK_DEPTH * 2.5f)),
+                glm::vec3(0.0f, 1.0f, 0.0f), // Up vector
+                YAW, PITCH, // Use default YAW and PITCH from Camera.h
+                g_windowWidth, g_windowHeight);
 
 // Mouse input state
 bool g_firstMouse = true;
 float g_lastX = 400, g_lastY = 300;
 
+// Raycasting distance and target block
+const float MAX_RAYCAST_DISTANCE = 5.0f;
+World::RaycastResult g_targetedBlock; // Stores the block currently looked at
+
 // Timing
 float g_deltaTime = 0.0f;
 float g_lastFrame = 0.0f;
 
+// Callback for mouse button events
+void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
+    if (action == GLFW_PRESS) {
+        // Use the continuously updated g_targetedBlock for interactions
+        if (g_targetedBlock.hit) {
+            std::cout << "Mouse click: Button " << button << " Action " << action << std::endl;
+            std::cout << "  Targeted Block: (" << g_targetedBlock.blockHit.x << ", " << g_targetedBlock.blockHit.y << ", " << g_targetedBlock.blockHit.z << ")";
+            std::cout << " Before: (" << g_targetedBlock.blockBefore.x << ", " << g_targetedBlock.blockBefore.y << ", " << g_targetedBlock.blockBefore.z << ")" << std::endl;
+
+            if (button == GLFW_MOUSE_BUTTON_LEFT) { 
+                // Try to break the block that was hit, if it's not air
+                if (g_targetedBlock.hit && g_world.getBlock(g_targetedBlock.blockHit) != BlockType::Air) {
+                    g_world.setBlock(g_targetedBlock.blockHit, BlockType::Air);
+                }
+            } else if (button == GLFW_MOUSE_BUTTON_RIGHT) { 
+                // Try to place a block in the 'blockBefore' position, 
+                // but only if we actually hit a solid block (meaning blockBefore is adjacent air)
+                if (g_targetedBlock.hit && g_world.getBlock(g_targetedBlock.blockHit) != BlockType::Air) {
+                     // And ensure blockBefore is actually air before placing
+                    if (g_world.getBlock(g_targetedBlock.blockBefore) == BlockType::Air) {
+                        g_world.setBlock(g_targetedBlock.blockBefore, BlockType::Stone); 
+                    }
+                }
+            }
+        } else {
+             std::cout << "Mouse click: No target block hit." << std::endl;
+        }
+    }
+}
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
-    glViewport(0, 0, width, height);
     g_windowWidth = width;
     g_windowHeight = height;
-    g_camera.WindowWidth = width;
-    g_camera.WindowHeight = height;
+
+    // Update camera's stored window dimensions for its projection matrix calculation
+    if (height > 0) {
+        g_camera.WindowWidth = width;
+        g_camera.WindowHeight = height;
+    }
+
+    // The most direct approach is if Renderer has a global instance or is passed around.
+    // Let's assume for now that the projection matrix used by the renderer is updated based on camera in beginFrame.
+    // And glViewport should be called here.
+    glViewport(0, 0, width, height);
+
+    // The initial renderer.init call also calls setViewport.
+    // If Renderer instance is available here:
+    // extern Renderer g_renderer_instance; // If it were global
+    // g_renderer_instance.setViewport(0,0,width,height); 
+
+    // Tell GLFW to capture our mouse and set mouse button callback
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
 }
 
 void mouse_callback(GLFWwindow* window, double xposIn, double yposIn) {
@@ -103,9 +166,6 @@ int main() {
     glfwSetCursorPosCallback(window, mouse_callback);
     glfwSetScrollCallback(window, scroll_callback);
 
-    // Tell GLFW to capture our mouse
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
     // Initialize GLAD
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "Failed to initialize GLAD" << std::endl;
@@ -117,15 +177,15 @@ int main() {
     std::cout << "GLFW Initialized and Window Created!" << std::endl;
     std::cout << "OpenGL Version: " << glGetString(GL_VERSION) << std::endl;
 
-    // Create and initialize Renderer
-    Renderer renderer;
-    if (!renderer.init(window)) {
+    // Initialize Renderer (now global g_renderer)
+    if (!g_renderer.init(g_windowWidth, g_windowHeight, window)) {
         std::cerr << "Failed to initialize Renderer" << std::endl;
         glfwTerminate();
         return -1;
     }
 
-    World world; // Create the world object
+    // Initialize World (now global g_world, call init after GL is ready)
+    g_world.init(); 
 
     // Loop until the user closes the window
     while (!glfwWindowShouldClose(window)) {
@@ -134,22 +194,58 @@ int main() {
         g_lastFrame = currentFrame;
 
         processInput(window);
+        g_world.processWorldUpdates(); // Process world updates (chunk gen, mesh builds)
+
+        // Continuous raycasting for block highlighting and interaction context
+        glm::vec3 rayOrigin = g_camera.Position;
+        glm::vec3 rayDirection = g_camera.Front;
+        g_targetedBlock = g_world.castRay(rayOrigin, rayDirection, MAX_RAYCAST_DISTANCE);
+
+        // DEBUG: Raycasting information
+        // std::cout << "Ray Origin: (" << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << ")"
+        //           << " Dir: (" << rayDirection.x << ", " << rayDirection.y << ", " << rayDirection.z << ")"
+        //           << " Hit: " << g_targetedBlock.hit;
+        // if (g_targetedBlock.hit) {
+        //     std::cout << " BlockHit: (" << g_targetedBlock.blockHit.x << ", " << g_targetedBlock.blockHit.y << ", " << g_targetedBlock.blockHit.z << ")"
+        //               << " BlockBefore: (" << g_targetedBlock.blockBefore.x << ", " << g_targetedBlock.blockBefore.y << ", " << g_targetedBlock.blockBefore.z << ")";
+        // }
+        // std::cout << std::endl;
 
         // Camera is updated by mouse_callback and processInput directly
 
         // Rendering
-        renderer.beginFrame(g_camera);
+        g_renderer.beginFrame(g_camera); // Use global renderer
 
-        // Iterate through loaded chunks and draw their meshes
-        const auto& loadedChunks = world.getLoadedChunks();
-        for (const auto& pair : loadedChunks) {
-            const Chunk* chunk = pair.second.get();
-            if (chunk) { // Make sure chunk is not null
-                renderer.drawChunk(*chunk);
+        for (const auto& pair : g_world.getLoadedChunks()) { 
+            const std::unique_ptr<Chunk>& chunkPtr = pair.second;
+            if (chunkPtr && chunkPtr->hasMesh()) { 
+                g_renderer.drawChunk(*chunkPtr); 
             }
         }
 
-        renderer.endFrame();
+        // Determine what to outline based on raycast result for interaction context
+        bool showOutline = false;
+        glm::ivec3 outlinePos;
+
+        if (g_targetedBlock.hit) {
+            // If we hit a non-air block, that's our primary target for outlining (for breaking)
+            // and blockBefore is where we might place.
+            if (g_world.getBlock(g_targetedBlock.blockHit) != BlockType::Air) {
+                showOutline = true;
+                outlinePos = g_targetedBlock.blockHit; // Outline the solid block itself
+            } 
+            // If we hit an air block directly (e.g. ray started inside it, or first hit was air - less likely with current raycaster)
+            // OR if the ray hit nothing solid but we still want to place based on 'blockBefore' (if ray ended in air next to something)
+            // This part needs careful thought. For now, prioritize highlighting the solid block hit.
+            // For placement, the outline should be on g_targetedBlock.blockBefore if g_targetedBlock.blockHit is solid.
+        }
+
+        if (showOutline) {
+            g_renderer.drawBlockOutline(outlinePos);
+        }
+
+        g_renderer.drawCrosshair(); 
+        g_renderer.endFrame(); 
 
         // Swap front and back buffers
         glfwSwapBuffers(window);
@@ -159,7 +255,8 @@ int main() {
     }
 
     // Cleanup
-    renderer.shutdown(); // Call renderer shutdown
+    // renderer.cleanup(); // Corrected to cleanup
+    g_renderer.cleanup(); // Use global renderer
     glfwTerminate();
     return 0;
 } 

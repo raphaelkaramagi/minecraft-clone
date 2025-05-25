@@ -5,6 +5,7 @@
 #include <vector>
 #include <glm/glm.hpp> // For chunk position (ivec3)
 #include <glad/glad.h> // For GLuint
+#include <glm/gtc/type_ptr.hpp>
 
 class Chunk {
 public:
@@ -32,6 +33,14 @@ public:
     int getVertexCount() const { return m_vertexCount; }
     bool hasMesh() const { return m_vao != 0 && m_vertexCount > 0; }
 
+    glm::ivec3 getWorldPosition() const { return worldPosition; }
+
+    // New flags for deferred processing
+    bool isGenerated() const { return m_isGenerated; }
+    void setGenerated(bool generated) { m_isGenerated = generated; }
+    bool needsMeshBuild() const { return m_needsMeshBuild; }
+    void setNeedsMeshBuild(bool needsBuild) { m_needsMeshBuild = needsBuild; }
+
     // For later: methods to build a mesh from the chunk data
     // void buildMesh();
     // const std::vector<float>& getMeshVertices() const;
@@ -48,6 +57,9 @@ private:
     // GLuint m_ebo; // If using indexed drawing later
     int m_vertexCount;
     // std::vector<float> m_meshVertices; // Temporary storage during buildMesh, not kept as member
+
+    bool m_isGenerated;      // True if generateSimpleTerrain has run
+    bool m_needsMeshBuild;   // True if blocks changed and mesh needs rebuild
 
     // Helper to convert 3D local coords to 1D array index
     int coordsToIndex(int x, int y, int z) const;

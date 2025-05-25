@@ -1,15 +1,22 @@
 #include "World.h"
 #include <iostream> // For debug
+#include <limits>   // For std::numeric_limits
 
 World::World() {
-    // Constructor - maybe load a few initial chunks?
-    // For now, let's create a 3x1x3 area of chunks around origin (0,0,0) for testing.
-    // The Y chunk coordinate will be 0 for now (single layer of chunks vertically)
-    for (int x = -1; x <= 1; ++x) {
-        for (int z = -1; z <= 1; ++z) {
+    // Constructor - Now very simple, no OpenGL-dependent calls here.
+}
+
+// New init method to be called after OpenGL is ready
+void World::init() {
+    // Create a 2x1x2 area of chunks around world origin for a reasonable start.
+    // Chunk coordinates will be (0,0,0), (1,0,0), (0,0,1), (1,0,1)
+    for (int x = 0; x <= 1; ++x) { // Changed from -1 to 1  => 0 to 1 (for a 2x2 initial area starting at 0,0)
+        for (int z = 0; z <= 1; ++z) { // Changed from -1 to 1 => 0 to 1
             ensureChunkExists(glm::ivec3(x, 0, z));
         }
     }
+    // For a single chunk at origin for fastest loading:
+    // ensureChunkExists(glm::ivec3(0, 0, 0));
 }
 
 World::~World() {
@@ -19,8 +26,9 @@ World::~World() {
 bool World::ensureChunkExists(glm::ivec3 chunkCoord) {
     if (m_chunks.find(chunkCoord) == m_chunks.end()) {
         m_chunks[chunkCoord] = std::make_unique<Chunk>(chunkCoord);
-        m_chunks[chunkCoord]->generateSimpleTerrain(); // Generate terrain for the new chunk
-        // std::cout << "World: Generated chunk at " << chunkCoord.x << ", " << chunkCoord.y << ", " << chunkCoord.z << std::endl;
+        // DO NOT call generateSimpleTerrain() or buildMesh() here anymore.
+        // Chunk will be processed by processWorldUpdates().
+        // std::cout << "World: Created (but not yet generated) chunk at " << chunkCoord.x << ", " << chunkCoord.y << ", " << chunkCoord.z << std::endl;
         return true;
     }
     return false;
@@ -56,6 +64,112 @@ void World::setBlock(glm::ivec3 worldBlockPos, BlockType type) {
 
 const std::map<glm::ivec3, std::unique_ptr<Chunk>, Ivec3Compare>& World::getLoadedChunks() const {
     return m_chunks;
+}
+
+// Implementation of castRay
+World::RaycastResult World::castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, float maxDistance) const {
+    RaycastResult result;
+    result.hit = false;
+
+    glm::vec3 normalizedDirection = glm::normalize(rayDirection);
+    if (glm::length(normalizedDirection) < 0.0001f) { // Avoid issues with zero direction
+        return result; // Cannot cast a ray with no direction
+    }
+
+    // Offset origin slightly along direction to avoid self-intersection or issues when flush with a face
+    const float originOffset = 1e-4f; // Made smaller for potentially more precision
+    glm::vec3 effectiveRayOrigin = rayOrigin + normalizedDirection * originOffset; // Use normalizedDirection for offset
+
+    glm::ivec3 currentBlockPos = glm::floor(effectiveRayOrigin); 
+
+    glm::vec3 step = glm::sign(normalizedDirection);
+
+    glm::vec3 tMax; // Distance (in units of t) to the next voxel boundary along each axis
+    // For X axis:
+    if (normalizedDirection.x == 0.0f) tMax.x = std::numeric_limits<float>::infinity();
+    else if (step.x > 0) tMax.x = (currentBlockPos.x + 1.0f - effectiveRayOrigin.x) / normalizedDirection.x;
+    else tMax.x = (effectiveRayOrigin.x - currentBlockPos.x) / -normalizedDirection.x; // or (currentBlockPos.x - effectiveRayOrigin.x) / normalizedDirection.x
+    // For Y axis:
+    if (normalizedDirection.y == 0.0f) tMax.y = std::numeric_limits<float>::infinity();
+    else if (step.y > 0) tMax.y = (currentBlockPos.y + 1.0f - effectiveRayOrigin.y) / normalizedDirection.y;
+    else tMax.y = (effectiveRayOrigin.y - currentBlockPos.y) / -normalizedDirection.y;
+    // For Z axis:
+    if (normalizedDirection.z == 0.0f) tMax.z = std::numeric_limits<float>::infinity();
+    else if (step.z > 0) tMax.z = (currentBlockPos.z + 1.0f - effectiveRayOrigin.z) / normalizedDirection.z;
+    else tMax.z = (effectiveRayOrigin.z - currentBlockPos.z) / -normalizedDirection.z;
+
+    glm::vec3 tDelta; // How much t to advance along each axis to cross one voxel boundary
+    if (normalizedDirection.x == 0.0f) tDelta.x = std::numeric_limits<float>::infinity(); 
+    else tDelta.x = std::abs(1.0f / normalizedDirection.x);
+    if (normalizedDirection.y == 0.0f) tDelta.y = std::numeric_limits<float>::infinity(); 
+    else tDelta.y = std::abs(1.0f / normalizedDirection.y);
+    if (normalizedDirection.z == 0.0f) tDelta.z = std::numeric_limits<float>::infinity(); 
+    else tDelta.z = std::abs(1.0f / normalizedDirection.z);
+
+    glm::ivec3 previousBlockPos = currentBlockPos;
+    float currentDistance = 0.0f;
+
+    while (currentDistance < maxDistance) {
+        previousBlockPos = currentBlockPos;
+
+        if (tMax.x < tMax.y) {
+            if (tMax.x < tMax.z) {
+                currentBlockPos.x += static_cast<int>(step.x);
+                currentDistance = tMax.x;
+                tMax.x += tDelta.x;
+            } else {
+                currentBlockPos.z += static_cast<int>(step.z);
+                currentDistance = tMax.z;
+                tMax.z += tDelta.z;
+            }
+        } else {
+            if (tMax.y < tMax.z) {
+                currentBlockPos.y += static_cast<int>(step.y);
+                currentDistance = tMax.y;
+                tMax.y += tDelta.y;
+            } else {
+                currentBlockPos.z += static_cast<int>(step.z);
+                currentDistance = tMax.z;
+                tMax.z += tDelta.z;
+            }
+        }
+
+        if (currentDistance >= maxDistance) {
+            result.hit = false;
+            break;
+        }
+
+        BlockType block = getBlock(currentBlockPos);
+        if (block != BlockType::Air) {
+            result.hit = true;
+            result.blockHit = currentBlockPos;
+            result.blockBefore = previousBlockPos; // The block right before we hit solid
+            // std::cout << "Ray hit at: " << result.blockHit.x << ", " << result.blockHit.y << ", " << result.blockHit.z << std::endl;
+            // std::cout << "Block before: " << result.blockBefore.x << ", " << result.blockBefore.y << ", " << result.blockBefore.z << std::endl;
+            break;
+        }
+    }
+    return result;
+}
+
+void World::processWorldUpdates() {
+    // Process one chunk generation per call
+    for (auto& pair : m_chunks) {
+        Chunk* chunk = pair.second.get();
+        if (chunk && !chunk->isGenerated()) {
+            chunk->generateSimpleTerrain(); // This will set needsMeshBuild to true
+            // std::cout << "World processed generation for chunk: " << chunk->getWorldPosition().x << ", " << chunk->getWorldPosition().z << std::endl;
+        }
+    }
+
+    // Process all mesh builds per call, only for generated chunks
+    for (auto& pair : m_chunks) {
+        Chunk* chunk = pair.second.get();
+        if (chunk && chunk->isGenerated() && chunk->needsMeshBuild()) {
+            chunk->buildMesh();
+            // std::cout << "World processed mesh build for chunk: " << chunk->getWorldPosition().x << ", " << chunk->getWorldPosition().z << std::endl;
+        }
+    }
 }
 
 // Helper to convert world block coordinates to chunk coordinates

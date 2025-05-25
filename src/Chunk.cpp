@@ -2,71 +2,83 @@
 #include <iostream> // For debug output
 #include <glad/glad.h> // For OpenGL functions
 #include <vector> // For std::vector
+#include <glm/glm.hpp> // For glm::vec3
 
 // Each vertex: X, Y, Z, R, G, B (0.5f, 0.5f, 0.5f for grey)
 // Vertices for a single cube, face by face.
 // Each face has 6 vertices (2 triangles), each vertex has 6 floats. Total 36 floats per face.
 
+// Define colors for block types
+const glm::vec3 colorStone(0.5f, 0.5f, 0.5f);    // Grey
+const glm::vec3 colorDirt(0.6f, 0.4f, 0.2f);     // Brown
+const glm::vec3 colorGrassTop(0.0f, 0.8f, 0.0f); // Green for top
+const glm::vec3 colorGrassSide(0.5f, 0.35f, 0.15f); // Brownish for sides (used for sides and bottom of grass)
+const glm::vec3 colorGrassBottom(0.6f, 0.4f, 0.2f); // Dirt color for grass bottom
+
 // +X (Right)
 const float rightFaceVertices[] = {
-    0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
+    0.5f, -0.5f, -0.5f,
+    0.5f,  0.5f, -0.5f,
+    0.5f,  0.5f,  0.5f,
+    0.5f,  0.5f,  0.5f,
+    0.5f, -0.5f,  0.5f,
+    0.5f, -0.5f, -0.5f,
 };
 // -X (Left)
 const float leftFaceVertices[] = {
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f, -0.5f,  0.5f,
+    -0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f,  0.5f,
 };
 // +Y (Top)
 const float topFaceVertices[] = {
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f, -0.5f,
 };
 // -Y (Bottom)
 const float bottomFaceVertices[] = {
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f, -0.5f,
+     0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f,  0.5f,
 };
 // +Z (Front)
 const float frontFaceVertices[] = {
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f,  0.5f,  0.5f, 0.5f, 0.5f,
+    -0.5f, -0.5f,  0.5f,
+     0.5f, -0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+     0.5f,  0.5f,  0.5f,
+    -0.5f,  0.5f,  0.5f,
+    -0.5f, -0.5f,  0.5f,
 };
 // -Z (Back)
 const float backFaceVertices[] = {
-     0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-    -0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f,  0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
-     0.5f, -0.5f, -0.5f,  0.5f, 0.5f, 0.5f,
+     0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+    -0.5f,  0.5f, -0.5f,
+     0.5f,  0.5f, -0.5f,
+     0.5f, -0.5f, -0.5f,
 };
 
 const int verticesPerFace = 6; 
-const int floatsPerVertex = 6; // 3 for pos, 3 for color
-const int floatsPerFace = verticesPerFace * floatsPerVertex; // 36
+const int floatsPerVertexPositionData = 3; // X, Y, Z for the static face data
+const int floatsPerVertexRender = 6;       // X, Y, Z, R, G, B for the VBO and rendering
+// const int floatsPerFaceData = verticesPerFace * floatsPerVertexPositionData; // 18 floats
+const int floatsPerFaceMesh = verticesPerFace * floatsPerVertexRender; // 36 floats (for reservation)
 
-Chunk::Chunk(glm::ivec3 position) : worldPosition(position), m_vao(0), m_vbo(0), m_vertexCount(0) {
+Chunk::Chunk(glm::ivec3 position) 
+    : worldPosition(position), m_vao(0), m_vbo(0), m_vertexCount(0), 
+      m_isGenerated(false), m_needsMeshBuild(false) { // Initialize new flags
     m_blocks.resize(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH, BlockType::Air);
     // std::cout << "Chunk created at: " << position.x << ", " << position.y << ", " << position.z << std::endl;
 }
@@ -94,20 +106,25 @@ void Chunk::generateSimpleTerrain() {
         for (int z = 0; z < CHUNK_DEPTH; ++z) {
             int terrainHeight = CHUNK_HEIGHT / 2; // Example:
             for (int y = 0; y < CHUNK_HEIGHT; ++y) {
+                BlockType currentType = BlockType::Air; // Determine block type before calling setBlock directly
                 if (y < terrainHeight -1) {
-                    setBlock(x, y, z, BlockType::Stone);
+                    currentType = BlockType::Stone;
                 } else if (y < terrainHeight) {
-                    setBlock(x, y, z, BlockType::Dirt);
+                    currentType = BlockType::Dirt;
                 } else if (y == terrainHeight) {
-                    setBlock(x, y, z, BlockType::Grass);
-                } else {
-                    setBlock(x, y, z, BlockType::Air);
+                    currentType = BlockType::Grass;
+                }
+                // Directly set block in m_blocks without triggering a mesh build here
+                if (isPositionInBounds(x,y,z)) {
+                     m_blocks[coordsToIndex(x,y,z)] = currentType;
                 }
             }
         }
     }
+    m_isGenerated = true;
+    m_needsMeshBuild = true; // Mark for mesh build after terrain is set
     // std::cout << "Chunk generated simple terrain at " << worldPosition.x << ", " << worldPosition.z << std::endl;
-    buildMesh(); // Build mesh after terrain is generated
+    // buildMesh(); // Mesh will be built by World::processWorldUpdates or explicitly
 }
 
 BlockType Chunk::getBlock(int x, int y, int z) const {
@@ -121,9 +138,10 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     if (!isPositionInBounds(x, y, z)) {
         return;
     }
-    m_blocks[coordsToIndex(x,y,z)] = type;
-    // Future: Mark chunk as dirty and needing a mesh rebuild
-    // buildMesh(); // For now, rebuild mesh on any change (can be inefficient)
+    if (m_blocks[coordsToIndex(x,y,z)] != type) { 
+        m_blocks[coordsToIndex(x,y,z)] = type;
+        m_needsMeshBuild = true; // Mark for rebuild, don't call buildMesh() directly
+    }
 }
 
 bool Chunk::isPositionInBounds(int x, int y, int z) const {
@@ -133,64 +151,65 @@ bool Chunk::isPositionInBounds(int x, int y, int z) const {
 }
 
 // Helper function to add face vertices to the mesh
-void addFace(std::vector<float>& meshVertices, const float* faceData, int blockX, int blockY, int blockZ) {
+void addFace(std::vector<float>& meshVertices, const float* faceVertexPositions, int blockX, int blockY, int blockZ, const glm::vec3& color) {
     for (int i = 0; i < verticesPerFace; ++i) {
-        meshVertices.push_back(faceData[i * floatsPerVertex + 0] + blockX);
-        meshVertices.push_back(faceData[i * floatsPerVertex + 1] + blockY);
-        meshVertices.push_back(faceData[i * floatsPerVertex + 2] + blockZ);
-        meshVertices.push_back(faceData[i * floatsPerVertex + 3]);
-        meshVertices.push_back(faceData[i * floatsPerVertex + 4]);
-        meshVertices.push_back(faceData[i * floatsPerVertex + 5]);
+        // Position data from faceVertexPositions
+        meshVertices.push_back(faceVertexPositions[i * floatsPerVertexPositionData + 0] + blockX); // Vertex X
+        meshVertices.push_back(faceVertexPositions[i * floatsPerVertexPositionData + 1] + blockY); // Vertex Y
+        meshVertices.push_back(faceVertexPositions[i * floatsPerVertexPositionData + 2] + blockZ); // Vertex Z
+        // Color data
+        meshVertices.push_back(color.r);
+        meshVertices.push_back(color.g);
+        meshVertices.push_back(color.b);
     }
 }
 
 void Chunk::buildMesh() {
     std::vector<float> localMeshVertices;
-    // Estimate: worst case is a checkerboard, so roughly half blocks * 6 faces. More realistically far less.
-    localMeshVertices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH * floatsPerFace * 3); 
+    // Estimate a reasonable starting capacity.
+    localMeshVertices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH * floatsPerFaceMesh / 4); 
 
-    for (int y = 0; y < CHUNK_HEIGHT; ++y) {
-        for (int z = 0; z < CHUNK_DEPTH; ++z) {
-            for (int x = 0; x < CHUNK_WIDTH; ++x) {
-                BlockType currentBlockType = getBlock(x, y, z);
-                if (currentBlockType != BlockType::Air) {
-                    // Check +X face (Right)
-                    if (getBlock(x + 1, y, z) == BlockType::Air) {
-                        addFace(localMeshVertices, rightFaceVertices, x, y, z);
-                    }
-                    // Check -X face (Left)
-                    if (getBlock(x - 1, y, z) == BlockType::Air) {
-                        addFace(localMeshVertices, leftFaceVertices, x, y, z);
-                    }
-                    // Check +Y face (Top)
-                    if (getBlock(x, y + 1, z) == BlockType::Air) {
-                        addFace(localMeshVertices, topFaceVertices, x, y, z);
-                    }
-                    // Check -Y face (Bottom)
-                    if (getBlock(x, y - 1, z) == BlockType::Air) {
-                        addFace(localMeshVertices, bottomFaceVertices, x, y, z);
-                    }
-                    // Check +Z face (Front)
-                    if (getBlock(x, y, z + 1) == BlockType::Air) {
-                        addFace(localMeshVertices, frontFaceVertices, x, y, z);
-                    }
-                    // Check -Z face (Back)
-                    if (getBlock(x, y, z - 1) == BlockType::Air) {
-                        addFace(localMeshVertices, backFaceVertices, x, y, z);
-                    }
-                }
-            }
-        }
-    }
-
+    // 1. Delete old VAO/VBO if they exist.
     if (m_vao != 0) {
         glDeleteBuffers(1, &m_vbo);
         glDeleteVertexArrays(1, &m_vao);
         m_vbo = 0;
         m_vao = 0;
     }
+    // 2. Always reset vertex count.
     m_vertexCount = 0;
 
+    // 3. Build localMeshVertices 
+    for (int y = 0; y < CHUNK_HEIGHT; ++y) {
+        for (int z = 0; z < CHUNK_DEPTH; ++z) {
+            for (int x = 0; x < CHUNK_WIDTH; ++x) {
+                BlockType currentBlockType = getBlock(x, y, z);
+                if (currentBlockType != BlockType::Air) {
+                    glm::vec3 baseColor; 
+                    glm::vec3 faceTopColor = colorGrassTop; 
+                    glm::vec3 faceSideColor = colorGrassSide;
+                    glm::vec3 faceBottomColor = colorGrassBottom;
+
+                    switch (currentBlockType) {
+                        case BlockType::Stone: baseColor = colorStone; break;
+                        case BlockType::Dirt: baseColor = colorDirt; break;
+                        case BlockType::Grass: /* handled per-face */ break;
+                        default: baseColor = glm::vec3(1.0f, 0.0f, 1.0f); break; // Magenta for error
+                    }
+
+                    // Check faces and add to localMeshVertices if exposed
+                    if (getBlock(x + 1, y, z) == BlockType::Air) { addFace(localMeshVertices, rightFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceSideColor : baseColor); }
+                    if (getBlock(x - 1, y, z) == BlockType::Air) { addFace(localMeshVertices, leftFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceSideColor : baseColor); }
+                    if (getBlock(x, y + 1, z) == BlockType::Air) { addFace(localMeshVertices, topFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceTopColor : baseColor); }
+                    if (getBlock(x, y - 1, z) == BlockType::Air) { addFace(localMeshVertices, bottomFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceBottomColor : baseColor); }
+                    if (getBlock(x, y, z + 1) == BlockType::Air) { addFace(localMeshVertices, frontFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceSideColor : baseColor); }
+                    if (getBlock(x, y, z - 1) == BlockType::Air) { addFace(localMeshVertices, backFaceVertices, x, y, z, (currentBlockType == BlockType::Grass) ? faceSideColor : baseColor); }
+                }
+            }
+        }
+    }
+
+    // 4. If new mesh data exists, create and populate VAO/VBO.
     if (!localMeshVertices.empty()) {
         glGenVertexArrays(1, &m_vao);
         glGenBuffers(1, &m_vbo);
@@ -199,17 +218,19 @@ void Chunk::buildMesh() {
         glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
         glBufferData(GL_ARRAY_BUFFER, localMeshVertices.size() * sizeof(float), localMeshVertices.data(), GL_STATIC_DRAW);
 
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void*)0);
+        // Position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, floatsPerVertexRender * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void*)(3 * sizeof(float)));
+        // Color attribute
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, floatsPerVertexRender * sizeof(float), (void*)(floatsPerVertexPositionData * sizeof(float)));
         glEnableVertexAttribArray(1);
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
 
-        m_vertexCount = static_cast<int>(localMeshVertices.size() / floatsPerVertex);
-        // std::cout << "Chunk at " << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << " built mesh with " << m_vertexCount << " vertices." << std::endl;
-    } else {
-        // std::cout << "Chunk at " << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << " built empty mesh." << std::endl;
+        m_vertexCount = static_cast<int>(localMeshVertices.size() / floatsPerVertexRender);
     }
+    // else: m_vertexCount remains 0, m_vao remains 0. Nothing to render for this chunk.
+    
+    m_needsMeshBuild = false;
 } 

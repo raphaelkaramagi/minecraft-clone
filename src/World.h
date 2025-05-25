@@ -19,8 +19,16 @@ struct Ivec3Compare {
 
 class World {
 public:
+    // New struct for raycasting results
+    struct RaycastResult {
+        bool hit = false;
+        glm::ivec3 blockHit;      // The solid block that was hit
+        glm::ivec3 blockBefore;   // The air block position just before hitting blockHit
+    };
+
     World();
     ~World();
+    void init(); // New method to initialize world (e.g., create initial chunks)
 
     // Generates or loads a chunk at the given chunk coordinates
     // Returns true if a new chunk was generated/loaded, false if it already existed or failed
@@ -32,6 +40,11 @@ public:
 
     // For iteration by the renderer (temporary)
     const std::map<glm::ivec3, std::unique_ptr<Chunk>, Ivec3Compare>& getLoadedChunks() const;
+
+    // New raycasting method
+    RaycastResult castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, float maxDistance) const;
+
+    void processWorldUpdates(); // New method for deferred chunk processing
 
 private:
     std::map<glm::ivec3, std::unique_ptr<Chunk>, Ivec3Compare> m_chunks;
