@@ -1,6 +1,8 @@
 #include "World.h"
+#include "Camera.h" // Include for AABB struct definition
 #include <iostream> // For debug
 #include <limits>   // For std::numeric_limits
+#include <algorithm> // For std::min and std::max if needed though glm provides its own
 
 World::World() {
     // Constructor - Now very simple, no OpenGL-dependent calls here.
@@ -25,6 +27,13 @@ World::~World() {
 }
 
 bool World::ensureChunkExists(glm::ivec3 chunkCoord) {
+    // Temporary: Only allow creation/expansion of chunks on the Y=0 layer for now.
+    if (chunkCoord.y != 0) {
+        // Optionally, log this attempt if it's useful for debugging player actions.
+        // std::cout << "[World::ensureChunkExists] Denied creation of chunk at Y level: " << chunkCoord.y << std::endl;
+        return false; // Do not create chunk if not on Y=0 layer.
+    }
+
     if (m_chunks.find(chunkCoord) == m_chunks.end()) {
         m_chunks[chunkCoord] = std::make_unique<Chunk>(chunkCoord);
         // DO NOT call generateSimpleTerrain() or buildMesh() here anymore.
@@ -87,7 +96,7 @@ World::RaycastResult World::castRay(const glm::vec3& rayOrigin, const glm::vec3&
     }
 
     // Offset origin slightly along direction to avoid self-intersection or issues when flush with a face
-    const float originOffset = 0.001f; // Increased from 1e-4f for potentially more robust boundary handling
+    const float originOffset = 0.001f;
     glm::vec3 effectiveRayOrigin = rayOrigin + normalizedDirection * originOffset; // Use normalizedDirection for offset
 
     glm::ivec3 currentBlockPos = glm::floor(effectiveRayOrigin); 
@@ -198,4 +207,127 @@ glm::ivec3 World::worldBlockToLocalCoord(glm::ivec3 worldBlockPos) const {
         (worldBlockPos.y % Chunk::CHUNK_HEIGHT + Chunk::CHUNK_HEIGHT) % Chunk::CHUNK_HEIGHT,
         (worldBlockPos.z % Chunk::CHUNK_DEPTH + Chunk::CHUNK_DEPTH) % Chunk::CHUNK_DEPTH
     );
+}
+
+// --- Collision Detection --- 
+
+// Helper to check AABB-AABB intersection
+bool checkAABBCollision(const AABB& a, const AABB& b) {
+    // Check for overlap on each axis
+    bool overlapX = a.min.x < b.max.x && a.max.x > b.min.x;
+    bool overlapY = a.min.y < b.max.y && a.max.y > b.min.y;
+    bool overlapZ = a.min.z < b.max.z && a.max.z > b.min.z;
+    return overlapX && overlapY && overlapZ;
+}
+
+// Main collision resolution function
+bool World::resolveCollisions(AABB& playerAABB, glm::vec3& playerVelocity, bool& io_isOnGround) {
+    bool collisionOccurredOverall = false;
+    io_isOnGround = false; // Assume not on ground until a supporting collision is found
+
+    // Iterate multiple times to handle complex collisions and settling
+    const int collisionPasses = 3; // Can be tuned
+
+    for (int pass = 0; pass < collisionPasses; ++pass) {
+        bool collisionThisPass = false;
+
+        glm::ivec3 minBlock = glm::floor(playerAABB.min - glm::vec3(1.0f)); // Expand search slightly
+        glm::ivec3 maxBlock = glm::ceil(playerAABB.max + glm::vec3(1.0f));  // Expand search slightly
+
+        for (int y = minBlock.y; y <= maxBlock.y; ++y) {
+            for (int x = minBlock.x; x <= maxBlock.x; ++x) {
+                for (int z = minBlock.z; z <= maxBlock.z; ++z) {
+                    glm::ivec3 currentBlockPos(x, y, z);
+                    BlockType blockType = getBlock(currentBlockPos);
+
+                    if (blockType != BlockType::Air) {
+                        AABB blockAABB;
+                        blockAABB.min = glm::vec3(currentBlockPos);
+                        blockAABB.max = glm::vec3(currentBlockPos) + glm::vec3(1.0f);
+
+                        if (checkAABBCollision(playerAABB, blockAABB)) {
+                            collisionThisPass = true;
+                            collisionOccurredOverall = true;
+
+                            // Calculate overlap (penetration) on each axis
+                            float overlapX = 0.0f;
+                            if (playerVelocity.x > 0) overlapX = blockAABB.min.x - playerAABB.max.x;
+                            else if (playerVelocity.x < 0) overlapX = blockAABB.max.x - playerAABB.min.x;
+                            
+                            float overlapY = 0.0f;
+                            if (playerVelocity.y > 0) overlapY = blockAABB.min.y - playerAABB.max.y;
+                            else if (playerVelocity.y < 0) overlapY = blockAABB.max.y - playerAABB.min.y;
+
+                            float overlapZ = 0.0f;
+                            if (playerVelocity.z > 0) overlapZ = blockAABB.min.z - playerAABB.max.z;
+                            else if (playerVelocity.z < 0) overlapZ = blockAABB.max.z - playerAABB.min.z;
+
+                            // Calculate how far to move playerAABB back in time along velocity vector to just touch
+                            // This is a more continuous approach but simpler is often better to start.
+                            // For now, let's use a simpler "push-out" based on minimum penetration.
+
+                            glm::vec3 penetration;
+                            // Corrected penetration calculation:
+                            // Amount of overlap = (sum of half-widths) - (distance between centers)
+                            // Simpler: dist between centers = max(a.min, b.min) - min(a.max, b.max)
+                            // More robust penetration: (ref: https://gamedev.stackexchange.com/a/29796)
+                            glm::vec3 centerA = (playerAABB.min + playerAABB.max) * 0.5f;
+                            glm::vec3 centerB = (blockAABB.min + blockAABB.max) * 0.5f;
+                            glm::vec3 halfSizeA = (playerAABB.max - playerAABB.min) * 0.5f;
+                            glm::vec3 halfSizeB = (blockAABB.max - blockAABB.min) * 0.5f;
+
+                            glm::vec3 delta = centerA - centerB;
+                            penetration.x = (halfSizeA.x + halfSizeB.x) - glm::abs(delta.x);
+                            penetration.y = (halfSizeA.y + halfSizeB.y) - glm::abs(delta.y);
+                            penetration.z = (halfSizeA.z + halfSizeB.z) - glm::abs(delta.z);
+
+                            // Determine the side of collision and resolve
+                            // This finds the axis of minimum penetration to resolve first.
+                            if (penetration.y < penetration.x && penetration.y < penetration.z) {
+                                // Vertical collision resolution
+                                if (playerAABB.min.y < blockAABB.min.y) { // Player is below block (ceiling collision)
+                                    playerAABB.min.y -= penetration.y;
+                                    playerAABB.max.y -= penetration.y;
+                                    if (playerVelocity.y > 0) playerVelocity.y = 0; // Hit ceiling
+                                } else { // Player is above block (floor collision)
+                                    playerAABB.min.y += penetration.y;
+                                    playerAABB.max.y += penetration.y;
+                                    if (playerVelocity.y < 0) {
+                                        playerVelocity.y = 0; // Landed on ground
+                                        io_isOnGround = true;
+                                    }
+                                }
+                            } else if (penetration.x < penetration.y && penetration.x < penetration.z) {
+                                // Horizontal X collision resolution
+                                if (playerAABB.min.x < blockAABB.min.x) { // Player is to the left of block
+                                    playerAABB.min.x -= penetration.x;
+                                    playerAABB.max.x -= penetration.x;
+                                } else { // Player is to the right of block
+                                    playerAABB.min.x += penetration.x;
+                                    playerAABB.max.x += penetration.x;
+                                }
+                                if ((playerVelocity.x > 0 && playerAABB.max.x > blockAABB.min.x) || (playerVelocity.x < 0 && playerAABB.min.x < blockAABB.max.x)) {
+                                   playerVelocity.x = 0; 
+                                }
+                            } else {
+                                // Horizontal Z collision resolution
+                                if (playerAABB.min.z < blockAABB.min.z) { // Player is in front of block
+                                    playerAABB.min.z -= penetration.z;
+                                    playerAABB.max.z -= penetration.z;
+                                } else { // Player is behind block
+                                    playerAABB.min.z += penetration.z;
+                                    playerAABB.max.z += penetration.z;
+                                }
+                                 if ((playerVelocity.z > 0 && playerAABB.max.z > blockAABB.min.z) || (playerVelocity.z < 0 && playerAABB.min.z < blockAABB.max.z)) {
+                                   playerVelocity.z = 0; 
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (!collisionThisPass) break; // If no collisions in a pass, we are stable
+    }
+    return collisionOccurredOverall;
 } 

@@ -24,10 +24,11 @@ void Camera::ProcessKeyboard(Camera_Movement direction, float deltaTime) {
         Position -= Right * velocity;
     if (direction == Camera_Movement::RIGHT)
         Position += Right * velocity;
-    if (direction == Camera_Movement::UP)      // Basic flying/jumping
-        Position += WorldUp * velocity;     // Use WorldUp for consistent up/down
-    if (direction == Camera_Movement::DOWN)    // Basic flying/descending
-        Position -= WorldUp * velocity;
+    // UP and DOWN cases removed as they are handled by physics in main.cpp
+    // if (direction == Camera_Movement::UP)      
+    //     Position += WorldUp * velocity;     
+    // if (direction == Camera_Movement::DOWN)    
+    //     Position -= WorldUp * velocity;
     // To keep player on ground, would need to set Position.y = 0.0f; (or some ground level)
     // For true Minecraft-style movement, collision detection with terrain is needed.
 }

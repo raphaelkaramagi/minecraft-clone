@@ -24,11 +24,9 @@ bool g_showDebugInfo = false; // Toggle for F3 debug screen
 // Globals for window size (for framebuffer_size_callback)
 int g_windowWidth = 800;
 int g_windowHeight = 600;
-// Initial position should allow viewing of the initial chunks at (0,0,0), (16,0,0), (0,0,16), (16,0,16)
-// Let's place it at x=16, y high enough, z far enough to see them.
-Camera g_camera(glm::vec3(static_cast<float>(Chunk::CHUNK_WIDTH), 
-                           static_cast<float>(Chunk::CHUNK_HEIGHT / 2 + 10), 
-                           static_cast<float>(Chunk::CHUNK_DEPTH * 2.5f)),
+
+// Simplified direct spawn position for debugging
+Camera g_camera(glm::vec3(8.0f, 10.0f, 8.0f), // X=8, Z=8 (center of 0,0,0 chunk). Y=10 to be clearly above ground 
                 glm::vec3(0.0f, 1.0f, 0.0f), // Up vector
                 YAW, PITCH, // Use default YAW and PITCH from Camera.h
                 g_windowWidth, g_windowHeight);
@@ -44,6 +42,11 @@ World::RaycastResult g_targetedBlock; // Stores the block currently looked at
 // Timing
 float g_deltaTime = 0.0f;
 float g_lastFrame = 0.0f;
+
+// Flight mode globals
+const float DOUBLE_TAP_TIME_THRESHOLD = 0.25f; // seconds for double tap
+float g_lastSpacePressTime = -1.0f;         // Time of the last spacebar press, init to invalid
+const float FLY_SPEED = 5.0f;               // How fast to ascend/descend when flying
 
 // Callback for mouse button events
 void mouse_button_callback(GLFWwindow* window, int button, int action, int mods) {
@@ -139,6 +142,63 @@ void processInput(GLFWwindow *window) {
     }
     f3_pressed_last_frame = f3_currently_pressed;
 
+    // --- Flight and Jump Logic ---
+    static bool space_key_physically_down_last_frame = false; // For detecting rising edge of space press
+    bool flight_toggled_this_press_event = false;             // True if a double tap toggled flight in this specific press event
+
+    bool space_key_is_currently_pressed = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
+
+    // 1. Handle Double-Tap Toggle on Space Key Press (rising edge)
+    if (space_key_is_currently_pressed && !space_key_physically_down_last_frame) {
+        float currentTime = static_cast<float>(glfwGetTime());
+        if (g_lastSpacePressTime > 0.0f && (currentTime - g_lastSpacePressTime) < DOUBLE_TAP_TIME_THRESHOLD) {
+            // Double tap detected
+            g_camera.isFlying = !g_camera.isFlying;
+            flight_toggled_this_press_event = true; // Mark that flight was toggled by this press
+            if (g_camera.isFlying) {
+                // g_camera.verticalVelocity = 0.0f; // Stop any fall/jump velocity <-- OLD
+                g_camera.Velocity.y = 0.0f; // Stop any fall/jump velocity
+                g_camera.isOnGround = false;      // Cannot be on ground if starting to fly
+                std::cout << "Flight mode ON (double tap)" << std::endl;
+            } else {
+                std::cout << "Flight mode OFF (double tap)" << std::endl;
+                // Gravity will take over. isOnGround will be updated by physics.
+            }
+            // Reset lastSpacePressTime to effectively consume the double tap,
+            // preventing it from becoming the first tap of another potential double tap immediately.
+            g_lastSpacePressTime = 0.0f; 
+        } else {
+            // Single tap (or first tap of a potential double tap)
+            g_lastSpacePressTime = currentTime;
+        }
+    }
+    space_key_physically_down_last_frame = space_key_is_currently_pressed;
+
+    // 2. Handle Continuous Actions (Flying or Jumping) based on current key states
+    //    Only if flight wasn't *just* toggled by the most recent press event that occurred on this frame.
+    if (!flight_toggled_this_press_event) {
+        if (g_camera.isFlying) {
+            // Flying controls
+            if (space_key_is_currently_pressed) { // Space to ascend
+                g_camera.Position.y += FLY_SPEED * g_deltaTime;
+            }
+            if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) { // Left Shift to descend
+                g_camera.Position.y -= FLY_SPEED * g_deltaTime;
+            }
+        } else {
+            // Not flying: Normal jump logic
+            if (space_key_is_currently_pressed && g_camera.isOnGround) {
+                // g_camera.verticalVelocity = JUMP_FORCE; // JUMP_FORCE from Camera.h <-- OLD
+                g_camera.Velocity.y = JUMP_FORCE; // JUMP_FORCE from Camera.h
+                g_camera.isOnGround = false;
+                // This also serves as the first press action if a double tap doesn't complete.
+                // If space is held, subsequent jumps will occur once isOnGround is true again.
+            }
+        }
+    }
+    // --- End Flight and Jump Logic ---
+
+    // Horizontal movement - unchanged
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         g_camera.ProcessKeyboard(Camera_Movement::FORWARD, g_deltaTime);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
@@ -147,10 +207,6 @@ void processInput(GLFWwindow *window) {
         g_camera.ProcessKeyboard(Camera_Movement::LEFT, g_deltaTime);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
         g_camera.ProcessKeyboard(Camera_Movement::RIGHT, g_deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) // Example: Space for UP
-        g_camera.ProcessKeyboard(Camera_Movement::UP, g_deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) // Example: Shift for DOWN
-        g_camera.ProcessKeyboard(Camera_Movement::DOWN, g_deltaTime);
 }
 
 int main() {
@@ -217,8 +273,59 @@ int main() {
         float currentFrame = static_cast<float>(glfwGetTime());
         g_deltaTime = currentFrame - g_lastFrame;
         g_lastFrame = currentFrame;
+        if (g_deltaTime > 0.1f) g_deltaTime = 0.1f; // Clamp max delta time
+
+        glm::vec3 oldCameraPos = g_camera.Position; // Store position before input and y-velocity update
 
         processInput(window);
+
+        // --- Physics, Movement, and Collision Update ---
+        if (!g_camera.isFlying) {
+            glm::vec3 displacementThisFrame(0.0f);
+
+            // 1. Apply gravity to vertical velocity
+            g_camera.Velocity.y += GRAVITY * g_deltaTime;
+            displacementThisFrame.y = g_camera.Velocity.y * g_deltaTime;
+
+            // 2. Get XZ displacement (which was already applied to g_camera.Position by processInput)
+            // We need to re-apply it starting from oldCameraPos to combine with Y displacement correctly before collision.
+            // So, capture the XZ change that processInput made:
+            float dx_from_input = g_camera.Position.x - oldCameraPos.x;
+            float dz_from_input = g_camera.Position.z - oldCameraPos.z;
+            displacementThisFrame.x = dx_from_input;
+            displacementThisFrame.z = dz_from_input;
+
+            // 3. Tentatively update camera position with all displacement components for this frame
+            g_camera.Position = oldCameraPos + displacementThisFrame;
+            
+            // 4. Perform collision detection and resolution
+            AABB playerAABB = g_camera.getPlayerAABB();
+            glm::vec3 velocityForCollisionResolution = displacementThisFrame / (g_deltaTime > 1e-5f ? g_deltaTime : 1.0f);
+            
+            g_world.resolveCollisions(playerAABB, velocityForCollisionResolution, g_camera.isOnGround);
+
+            // 5. Update camera position from the (potentially modified) AABB
+            g_camera.Position.x = (playerAABB.min.x + playerAABB.max.x) / 2.0f;
+            g_camera.Position.y = playerAABB.min.y + PLAYER_EYE_LEVEL;
+            g_camera.Position.z = (playerAABB.min.z + playerAABB.max.z) / 2.0f;
+
+            // 6. Update camera's actual Y velocity based on collision outcome
+            if (g_camera.isOnGround) {
+                if (g_camera.Velocity.y < 0) g_camera.Velocity.y = 0; 
+            } else {
+                // If hit a ceiling, velocityForCollisionResolution.y would be zeroed by resolveCollisions
+                if (velocityForCollisionResolution.y == 0 && (displacementThisFrame.y / (g_deltaTime > 1e-5f ? g_deltaTime : 1.0f)) != 0) {
+                    g_camera.Velocity.y = 0;
+                }
+            }
+            // Horizontal velocity is implicitly handled by ProcessKeyboard modifying Position directly each frame.
+
+        } else { // Is Flying - position is directly manipulated by processInput for X,Y,Z flight controls.
+            g_camera.isOnGround = false;
+            g_camera.Velocity.y = 0.0f; // No gravity or Y-velocity accumulation when flying
+        }
+        // --- End Physics, Movement, and Collision Update ---
+
         g_world.processWorldUpdates(); // Process world updates (chunk gen, mesh builds)
 
         // Continuous raycasting for block highlighting and interaction context

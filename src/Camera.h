@@ -21,8 +21,21 @@ const float PITCH       =  0.0f;
 const float SPEED       =  2.5f;
 const float SENSITIVITY =  0.1f;
 const float ZOOM        =  45.0f;
+const float GRAVITY     = -20.0f; // Adjusted for a more game-like feel
+const float JUMP_FORCE  =  7.0f; 
+
+// Player Collision Dimensions
+const float PLAYER_HEIGHT    = 1.8f;
+const float PLAYER_WIDTH     = 0.6f; // Covers X and Z dimensions
+const float PLAYER_EYE_LEVEL = 1.6f; // Distance from feet to eye level
 
 struct GLFWwindow; // Forward declaration
+
+// Simple AABB struct
+struct AABB {
+    glm::vec3 min;
+    glm::vec3 max;
+};
 
 class Camera {
 public:
@@ -42,6 +55,31 @@ public:
     // Window dimensions for aspect ratio
     int WindowWidth;
     int WindowHeight;
+
+    // Physics related
+    glm::vec3 Velocity = glm::vec3(0.0f); // Player's current velocity vector
+    bool isOnGround = false;
+    bool isFlying = false; // Added for flight mode
+
+    // Helper to get player's collision AABB based on current position
+    AABB getPlayerAABB() const {
+        // Position is eye level. Calculate feet position first.
+        glm::vec3 feetPosition = Position;
+        feetPosition.y -= PLAYER_EYE_LEVEL;
+
+        AABB playerBox;
+        playerBox.min = glm::vec3(
+            feetPosition.x - PLAYER_WIDTH / 2.0f,
+            feetPosition.y, // Feet are at the bottom of the AABB
+            feetPosition.z - PLAYER_WIDTH / 2.0f
+        );
+        playerBox.max = glm::vec3(
+            feetPosition.x + PLAYER_WIDTH / 2.0f,
+            feetPosition.y + PLAYER_HEIGHT, // Top of the AABB
+            feetPosition.z + PLAYER_WIDTH / 2.0f
+        );
+        return playerBox;
+    }
 
     // Constructor with vectors
     Camera(glm::vec3 position = glm::vec3(0.0f, 0.0f, 0.0f),

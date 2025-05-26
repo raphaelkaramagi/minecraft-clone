@@ -5,8 +5,13 @@
 #include "BlockType.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp> // For ivec3 comparison if needed, though not directly
+#include <glm/gtx/hash.hpp>
+#include <vector> // For storing collision AABBs
 #include <map>
 #include <memory> // For std::unique_ptr
+
+// Forward declare AABB from Camera.h or define it here if preferred (Camera.h is fine)
+struct AABB; // Assuming AABB is defined in Camera.h and Camera.h will be included where World is used
 
 // Custom comparator for glm::ivec3 to use it as a key in std::map
 struct Ivec3Compare {
@@ -45,6 +50,11 @@ public:
     RaycastResult castRay(const glm::vec3& rayOrigin, const glm::vec3& rayDirection, float maxDistance) const;
 
     void processWorldUpdates(); // New method for deferred chunk processing
+
+    // Collision detection
+    // Checks collision for the playerAABB, attempts to resolve it by adjusting playerAABB and velocity.
+    // Returns true if any collision occurred and was resolved.
+    bool resolveCollisions(AABB& playerAABB, glm::vec3& playerVelocity, bool& io_isOnGround);
 
     // Helper functions - ensuring these are public
     glm::ivec3 worldBlockToChunkCoord(glm::ivec3 worldBlockPos) const;
