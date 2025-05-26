@@ -1,5 +1,7 @@
 #define GLFW_INCLUDE_NONE // IMPORTANT: Prevents GLFW from including gl.h or similar
 #include <iostream>
+#include <sstream> // For formatting strings for debug output
+#include <iomanip> // For std::setprecision and std::fixed
 
 // GLFW - Must be included before GLAD
 #include <GLFW/glfw3.h>
@@ -10,11 +12,14 @@
 #include "Renderer.h" // Include our new Renderer header
 #include "Camera.h" // Include Camera header
 #include "World.h" // Include World header
+#include "TextRenderer.h" // Include TextRenderer header
 
 // Make World and Renderer instances global for access in callbacks for now
 // This is not ideal for large projects but simplifies this step.
 Renderer g_renderer;
 World g_world;
+TextRenderer* g_textRenderer = nullptr; // Global TextRenderer pointer
+bool g_showDebugInfo = false; // Toggle for F3 debug screen
 
 // Globals for window size (for framebuffer_size_callback)
 int g_windowWidth = 800;
@@ -85,6 +90,10 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     // And glViewport should be called here.
     glViewport(0, 0, width, height);
 
+    if (g_textRenderer) { // Update TextRenderer projection
+        g_textRenderer->setWindowSize(width, height);
+    }
+
     // The initial renderer.init call also calls setViewport.
     // If Renderer instance is available here:
     // extern Renderer g_renderer_instance; // If it were global
@@ -121,6 +130,14 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset) {
 void processInput(GLFWwindow *window) {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
+
+    // F3 Toggle for Debug Info
+    static bool f3_pressed_last_frame = false;
+    bool f3_currently_pressed = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
+    if (f3_currently_pressed && !f3_pressed_last_frame) {
+        g_showDebugInfo = !g_showDebugInfo;
+    }
+    f3_pressed_last_frame = f3_currently_pressed;
 
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
         g_camera.ProcessKeyboard(Camera_Movement::FORWARD, g_deltaTime);
@@ -184,6 +201,14 @@ int main() {
         return -1;
     }
 
+    // Initialize TextRenderer
+    g_textRenderer = new TextRenderer(g_windowWidth, g_windowHeight);
+    if (!g_textRenderer) { // Basic check, TextRenderer constructor should handle its own errors
+        std::cerr << "Failed to initialize TextRenderer" << std::endl;
+        // Note: TextRenderer constructor doesn't explicitly return bool, relies on cerr for errors
+        // We might need a more robust error check from TextRenderer if it can fail init
+    }
+
     // Initialize World (now global g_world, call init after GL is ready)
     g_world.init(); 
 
@@ -200,16 +225,6 @@ int main() {
         glm::vec3 rayOrigin = g_camera.Position;
         glm::vec3 rayDirection = g_camera.Front;
         g_targetedBlock = g_world.castRay(rayOrigin, rayDirection, MAX_RAYCAST_DISTANCE);
-
-        // DEBUG: Raycasting information
-        // std::cout << "Ray Origin: (" << rayOrigin.x << ", " << rayOrigin.y << ", " << rayOrigin.z << ")"
-        //           << " Dir: (" << rayDirection.x << ", " << rayDirection.y << ", " << rayDirection.z << ")"
-        //           << " Hit: " << g_targetedBlock.hit;
-        // if (g_targetedBlock.hit) {
-        //     std::cout << " BlockHit: (" << g_targetedBlock.blockHit.x << ", " << g_targetedBlock.blockHit.y << ", " << g_targetedBlock.blockHit.z << ")"
-        //               << " BlockBefore: (" << g_targetedBlock.blockBefore.x << ", " << g_targetedBlock.blockBefore.y << ", " << g_targetedBlock.blockBefore.z << ")";
-        // }
-        // std::cout << std::endl;
 
         // Camera is updated by mouse_callback and processInput directly
 
@@ -245,7 +260,78 @@ int main() {
         }
 
         g_renderer.drawCrosshair(); 
-        g_renderer.endFrame(); 
+
+        // Render Debug Text (F3 screen)
+        if (g_showDebugInfo && g_textRenderer) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDisable(GL_DEPTH_TEST);
+
+            std::ostringstream oss;
+            float yPos = g_windowHeight - 20.0f; // Start from top
+            float lineHeight = 20.0f; // Adjust as needed based on font size and scale
+            float textScale = 0.7f; // Adjust for desired text size (increased from 0.4f)
+            glm::vec3 textColor(1.0f, 1.0f, 1.0f); // White text
+
+            // FPS
+            oss << "FPS: " << std::fixed << std::setprecision(1) << (1.0f / g_deltaTime);
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+
+            // Player Position
+            oss << "XYZ: " << std::fixed << std::setprecision(3) << g_camera.Position.x 
+                << " / " << g_camera.Position.y << " / " << g_camera.Position.z;
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+
+            // Player Block Position (integer)
+            glm::ivec3 playerBlockPos = glm::floor(g_camera.Position);
+            oss << "Block: " << playerBlockPos.x << " " << playerBlockPos.y << " " << playerBlockPos.z;
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+
+            // Player Chunk Position
+            glm::ivec3 playerChunkPos = g_world.worldBlockToChunkCoord(playerBlockPos);
+            oss << "Chunk: " << playerChunkPos.x << " " << playerChunkPos.y << " " << playerChunkPos.z;
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+
+            // Facing Direction (Simplified)
+            // You'd need more complex logic for N/S/E/W from g_camera.Front and Yaw
+            oss << "Facing: (see console for Yaw/Pitch)"; // Placeholder
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+            
+            // Targeted Block Info
+            if (g_targetedBlock.hit) {
+                oss << "Targeted Block: Yes";
+                g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, glm::vec3(0.0f,1.0f,0.0f));
+                yPos -= lineHeight; oss.str(""); oss.clear();
+                oss << "  Hit At: " << g_targetedBlock.blockHit.x << ", " << g_targetedBlock.blockHit.y << ", " << g_targetedBlock.blockHit.z;
+                g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, glm::vec3(0.0f,1.0f,0.0f));
+                yPos -= lineHeight; oss.str(""); oss.clear();
+                BlockType bt = g_world.getBlock(g_targetedBlock.blockHit);
+                oss << "  Type: " << static_cast<int>(bt);
+                g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, glm::vec3(0.0f,1.0f,0.0f));
+                yPos -= lineHeight; oss.str(""); oss.clear();
+                 oss << "  Place At: " << g_targetedBlock.blockBefore.x << ", " << g_targetedBlock.blockBefore.y << ", " << g_targetedBlock.blockBefore.z;
+                g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, glm::vec3(0.0f,1.0f,0.0f));
+                yPos -= lineHeight; oss.str(""); oss.clear();
+            } else {
+                g_textRenderer->renderText("Targeted Block: No", 10.0f, yPos, textScale, glm::vec3(1.0f,0.0f,0.0f));
+                yPos -= lineHeight; oss.str(""); oss.clear();
+            }
+
+            // Loaded Chunks Count
+            oss << "Loaded Chunks: " << g_world.getLoadedChunks().size();
+            g_textRenderer->renderText(oss.str(), 10.0f, yPos, textScale, textColor);
+            yPos -= lineHeight; oss.str(""); oss.clear();
+
+            glEnable(GL_DEPTH_TEST);
+            glDisable(GL_BLEND);
+        }
+
+        g_renderer.endFrame(); // Call after all rendering, including text
 
         // Swap front and back buffers
         glfwSwapBuffers(window);
@@ -255,7 +341,7 @@ int main() {
     }
 
     // Cleanup
-    // renderer.cleanup(); // Corrected to cleanup
+    delete g_textRenderer; // Delete TextRenderer
     g_renderer.cleanup(); // Use global renderer
     glfwTerminate();
     return 0;

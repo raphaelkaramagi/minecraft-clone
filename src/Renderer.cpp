@@ -123,9 +123,10 @@ void Renderer::drawChunk(const Chunk& chunk) {
     m_shader->use(); // Ensure shader is active
 
     glm::mat4 model = glm::mat4(1.0f);
-    // Chunk's worldPosition is already scaled (e.g., (0,0,0), (16,0,0), etc.)
-    // Vertices within the chunk mesh are relative to chunk origin (0..15)
-    model = glm::translate(model, glm::vec3(chunk.getWorldPosition()));
+    glm::vec3 chunkWorldPos = chunk.getWorldPosition();
+    model = glm::translate(model, glm::vec3(chunkWorldPos.x * Chunk::CHUNK_WIDTH,
+                                           chunkWorldPos.y * Chunk::CHUNK_HEIGHT,
+                                           chunkWorldPos.z * Chunk::CHUNK_DEPTH));
     
     m_shader->setMat4("model", model);
 

@@ -45,19 +45,28 @@ Chunk* World::getChunk(glm::ivec3 chunkCoord) const {
 BlockType World::getBlock(glm::ivec3 worldBlockPos) const {
     glm::ivec3 chunkCoord = worldBlockToChunkCoord(worldBlockPos);
     Chunk* chunk = getChunk(chunkCoord);
-    if (chunk) {
+    if (chunk && chunk->isGenerated()) {
         glm::ivec3 localPos = worldBlockToLocalCoord(worldBlockPos);
         return chunk->getBlock(localPos.x, localPos.y, localPos.z);
     }
-    return BlockType::Air; // Or some other default if chunk doesn't exist
+    return BlockType::Air; // Or some other default if chunk doesn't exist or isn't generated
 }
 
 void World::setBlock(glm::ivec3 worldBlockPos, BlockType type) {
+    std::cout << "[World::setBlock] Received worldBlockPos: (" 
+              << worldBlockPos.x << ", " << worldBlockPos.y << ", " << worldBlockPos.z 
+              << ") Type: " << static_cast<int>(type) << std::endl;
+
     glm::ivec3 chunkCoord = worldBlockToChunkCoord(worldBlockPos);
+    std::cout << "    Calculated chunkCoord: (" 
+              << chunkCoord.x << ", " << chunkCoord.y << ", " << chunkCoord.z << ")" << std::endl;
+
     ensureChunkExists(chunkCoord); // Ensure chunk exists before setting a block
     Chunk* chunk = getChunk(chunkCoord);
     if (chunk) {
         glm::ivec3 localPos = worldBlockToLocalCoord(worldBlockPos);
+        std::cout << "    Calculated localPos: (" 
+                  << localPos.x << ", " << localPos.y << ", " << localPos.z << ")" << std::endl;
         chunk->setBlock(localPos.x, localPos.y, localPos.z, type);
     }
 }
@@ -77,7 +86,7 @@ World::RaycastResult World::castRay(const glm::vec3& rayOrigin, const glm::vec3&
     }
 
     // Offset origin slightly along direction to avoid self-intersection or issues when flush with a face
-    const float originOffset = 1e-4f; // Made smaller for potentially more precision
+    const float originOffset = 0.001f; // Increased from 1e-4f for potentially more robust boundary handling
     glm::vec3 effectiveRayOrigin = rayOrigin + normalizedDirection * originOffset; // Use normalizedDirection for offset
 
     glm::ivec3 currentBlockPos = glm::floor(effectiveRayOrigin); 

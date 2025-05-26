@@ -46,11 +46,12 @@ public:
 
     void processWorldUpdates(); // New method for deferred chunk processing
 
-private:
-    std::map<glm::ivec3, std::unique_ptr<Chunk>, Ivec3Compare> m_chunks;
-
+    // Helper functions - ensuring these are public
     glm::ivec3 worldBlockToChunkCoord(glm::ivec3 worldBlockPos) const;
     glm::ivec3 worldBlockToLocalCoord(glm::ivec3 worldBlockPos) const;
+
+private:
+    std::map<glm::ivec3, std::unique_ptr<Chunk>, Ivec3Compare> m_chunks;
 };
 
 #endif // WORLD_H 

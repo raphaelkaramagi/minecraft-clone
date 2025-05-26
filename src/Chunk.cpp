@@ -138,9 +138,14 @@ void Chunk::setBlock(int x, int y, int z, BlockType type) {
     if (!isPositionInBounds(x, y, z)) {
         return;
     }
-    if (m_blocks[coordsToIndex(x,y,z)] != type) { 
+    BlockType oldType = m_blocks[coordsToIndex(x,y,z)];
+    if (oldType != type) { 
+        std::cout << "Chunk (" << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << ")"
+                  << " SetBlock at (" << x << "," << y << "," << z << ") from " << static_cast<int>(oldType)
+                  << " to " << static_cast<int>(type) << std::endl;
         m_blocks[coordsToIndex(x,y,z)] = type;
         m_needsMeshBuild = true; // Mark for rebuild, don't call buildMesh() directly
+        std::cout << "    m_needsMeshBuild is now: " << m_needsMeshBuild << std::endl;
     }
 }
 
@@ -165,6 +170,9 @@ void addFace(std::vector<float>& meshVertices, const float* faceVertexPositions,
 }
 
 void Chunk::buildMesh() {
+    std::cout << "Chunk (" << worldPosition.x << "," << worldPosition.y << "," << worldPosition.z << ")"
+              << ": buildMesh() called. m_needsMeshBuild was true." << std::endl;
+
     std::vector<float> localMeshVertices;
     // Estimate a reasonable starting capacity.
     localMeshVertices.reserve(CHUNK_WIDTH * CHUNK_HEIGHT * CHUNK_DEPTH * floatsPerFaceMesh / 4); 
@@ -184,6 +192,9 @@ void Chunk::buildMesh() {
         for (int z = 0; z < CHUNK_DEPTH; ++z) {
             for (int x = 0; x < CHUNK_WIDTH; ++x) {
                 BlockType currentBlockType = getBlock(x, y, z);
+                // if (x == 0 && z == 0) { // Debug specific column
+                //     std::cout << "  buildMesh iterating: x=" << x << " y=" << y << " z=" << z << " type=" << static_cast<int>(currentBlockType) << std::endl;
+                // }
                 if (currentBlockType != BlockType::Air) {
                     glm::vec3 baseColor; 
                     glm::vec3 faceTopColor = colorGrassTop; 
@@ -233,4 +244,6 @@ void Chunk::buildMesh() {
     // else: m_vertexCount remains 0, m_vao remains 0. Nothing to render for this chunk.
     
     m_needsMeshBuild = false;
+    std::cout << "    buildMesh() finished. New m_vertexCount: " << m_vertexCount 
+              << ", m_vao: " << m_vao << ", m_vbo: " << m_vbo << std::endl;
 } 
