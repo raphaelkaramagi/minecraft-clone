@@ -8,15 +8,16 @@ World::World() {
 
 // New init method to be called after OpenGL is ready
 void World::init() {
-    // Create a 2x1x2 area of chunks around world origin for a reasonable start.
-    // Chunk coordinates will be (0,0,0), (1,0,0), (0,0,1), (1,0,1)
-    for (int x = 0; x <= 1; ++x) { // Changed from -1 to 1  => 0 to 1 (for a 2x2 initial area starting at 0,0)
-        for (int z = 0; z <= 1; ++z) { // Changed from -1 to 1 => 0 to 1
-            ensureChunkExists(glm::ivec3(x, 0, z));
+    // Create a concentric area of chunks around world origin.
+    // A radius of 1 means a 3x3 area: (-1,0,-1) to (1,0,1)
+    int chunkLoadRadius = 1;
+    for (int cx = -chunkLoadRadius; cx <= chunkLoadRadius; ++cx) {
+        for (int cz = -chunkLoadRadius; cz <= chunkLoadRadius; ++cz) {
+            // For now, all chunks are at y=0 chunk coordinate.
+            ensureChunkExists(glm::ivec3(cx, 0, cz));
         }
     }
-    // For a single chunk at origin for fastest loading:
-    // ensureChunkExists(glm::ivec3(0, 0, 0));
+    std::cout << "World: Initialized " << (2*chunkLoadRadius+1)*(2*chunkLoadRadius+1) << " chunks around origin." << std::endl;
 }
 
 World::~World() {
